@@ -98,6 +98,7 @@ import {
 } from "@/app/components/projects/ProjectPageParts";
 import { DocumentSidePanel } from "@/app/components/shared/DocumentSidePanel";
 import { TableLoadMoreRow } from "@/app/components/shared/TableLoadMoreRow";
+import { TritiumEditor } from "@/app/components/documents/TritiumEditor";
 import { LibrarySkeuoIcon } from "@/app/components/shared/AppSidebarSkeuoIcons";
 import { EmptyState } from "@/app/components/ui/empty-state";
 import { PillButton } from "@/app/components/ui/pill-button";
@@ -153,6 +154,11 @@ export interface DocTableQuery {
     fileType: string | null;
     sort: DocumentSort | null;
 }
+
+type TritiumEditorTarget = {
+    documents: Document[];
+    folderName?: string;
+};
 
 const SORT_OPTIONS: TableFilterOption<TableSortDirection>[] = [
     { value: "asc", label: "Ascending" },
@@ -403,6 +409,8 @@ export function DocTable({
         id: string;
         label: string;
     } | null>(null);
+    const [tritiumTarget, setTritiumTarget] =
+        useState<TritiumEditorTarget | null>(null);
     const [selectedDocIds, setSelectedDocIds] = useState<string[]>([]);
     const [selectedFolderIds, setSelectedFolderIds] = useState<Set<string>>(
         () => new Set(),
@@ -627,6 +635,14 @@ export function DocTable({
             console.error("uploadDocumentVersion failed", e);
             setDocumentUploadWarning("Version upload failed. Please try again.");
         }
+    }
+
+    function canOpenInTritium(doc: Document) {
+        if (scopeKey !== "files" && scopeKey !== "templates") return false;
+        const extension = (doc.file_type ?? doc.filename.split(".").pop() ?? "")
+            .toLowerCase()
+            .trim();
+        return extension === "docx" || extension === "pdf";
     }
 
     async function replaceVersionFile(docId: string, versionId: string, file: File, filename: string) {
@@ -4435,6 +4451,15 @@ export function DocTable({
                                                         ? handleDownloadSelectedDocs()
                                                         : downloadDoc(menuDoc.id)
                                                 }
+                                                onOpenInTritium={
+                                                    !menuAppliesToSelection &&
+                                                    canOpenInTritium(menuDoc)
+                                                        ? () =>
+                                                              setTritiumTarget({
+                                                                  documents: [menuDoc],
+                                                              })
+                                                        : undefined
+                                                }
                                                 onShowAllVersions={
                                                     !menuAppliesToSelection &&
                                                     menuDocHasVersions &&
@@ -4516,6 +4541,31 @@ export function DocTable({
                                                         ? "New subfolder inside"
                                                         : "New subfolder"
                                                 }
+                                                onOpenInTritium={
+                                                    !menuFolderAppliesToSelection &&
+                                                    (scopeKey === "files" ||
+                                                        scopeKey === "templates") &&
+                                                    contextMenu.showFolderActions &&
+                                                    contextMenu.folderId
+                                                        ? () => {
+                                                              const folder = folders.find(
+                                                                  (candidate) =>
+                                                                      candidate.id ===
+                                                                      contextMenu.folderId,
+                                                              );
+                                                              if (!folder) return;
+                                                              const folderDocuments = docs.filter(
+                                                                  (document) =>
+                                                                      document.folder_id ===
+                                                                      folder.id,
+                                                              );
+                                                              setTritiumTarget({
+                                                                  documents: folderDocuments,
+                                                                  folderName: folder.name,
+                                                              });
+                                                          }
+                                                        : undefined
+                                                }
                                                 onRename={
                                                     !menuFolderAppliesToSelection &&
                                                     contextMenu.showFolderActions && contextMenu.folderId
@@ -4580,6 +4630,24 @@ export function DocTable({
                     await handleRemoveDoc(doc.id);
                 }}
             />
+            {tritiumTarget && (
+                <TritiumEditor
+                    documents={tritiumTarget.documents}
+                    folderName={tritiumTarget.folderName}
+                    onClose={async () => {
+                        setTritiumTarget(null);
+                        await Promise.all(
+                            tritiumTarget.documents.map((document) =>
+                                refreshDocumentVersionState(document.id),
+                            ),
+                        );
+                    }}
+                    onSave={async (document, file) => {
+                        await uploadDocumentVersion(document.id, file, file.name);
+                    }}
+                />
+            )}
+
         </div>
     );
 }
