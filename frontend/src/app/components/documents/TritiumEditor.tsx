@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { X } from "lucide-react";
 import type { Document } from "@/app/components/shared/types";
 import { getDocumentFile } from "@/app/lib/mikeApi";
@@ -38,7 +38,6 @@ export function TritiumEditor({
     onClose: () => void;
     onSave: (document: Document, file: File) => Promise<void>;
 }) {
-    const [error, setError] = useState<string | null>(null);
     const documentsRef = useRef(documents);
     const onCloseRef = useRef(onClose);
     const onSaveRef = useRef(onSave);
@@ -49,53 +48,31 @@ export function TritiumEditor({
 
     useEffect(() => {
         async function openTarget() {
-            try {
-                setError(null);
-                const tritium = await loadTritium();
-                tritiumRef.current = tritium;
-                const fileResponses = await Promise.all(
-                    documents.map(async (document) => ({
-                        document,
-                        response: await getDocumentFile(document.id),
-                    })),
+            const tritium = await loadTritium();
+            tritiumRef.current = tritium;
+            const fileResponses = await Promise.all(
+                documents.map(async (document) => ({
+                    document,
+                    response: await getDocumentFile(document.id),
+                })),
+            );
+            tritium.set_exit_handler(() => onCloseRef.current());
+            tritium.set_save_handler(async (file) => {
+                const source = documentsRef.current.find(
+                    (document) => document.filename === file.name,
                 );
-                tritium.set_exit_handler(() => onCloseRef.current());
-                tritium.set_save_handler(async (file) => {
-                    const source = documentsRef.current.find(
-                        (document) => document.filename === file.name,
-                    );
-                    if (!source) {
-                        setError(
-                            `Could not match ${file.name || "this file"} to a Library document.`,
-                        );
-                        return;
-                    }
-                    setError(null);
-                    try {
-                        await onSaveRef.current(source, file);
-                    } catch (saveError) {
-                        setError(
-                            saveError instanceof Error
-                                ? saveError.message
-                                : "Could not save a new version.",
-                        );
-                    }
-                });
-                const files = fileResponses.map(({ document, response }) =>
-                    new File(
-                        [response.blob],
-                        response.filename ?? document.filename,
-                        { type: response.blob.type },
-                    ),
-                );
-                tritium.start({ folder: folderName, files });
-            } catch (openError) {
-                setError(
-                    openError instanceof Error
-                        ? openError.message
-                        : "Could not open this file in Tritium.",
-                );
-            }
+                if (source) {
+                    await onSaveRef.current(source, file);
+                }
+            });
+            const files = fileResponses.map(({ document, response }) =>
+                new File(
+                    [response.blob],
+                    response.filename ?? document.filename,
+                    { type: response.blob.type },
+                ),
+            );
+            tritium.start({ folder: folderName, files });
         }
         void openTarget();
         return () => {};
@@ -118,11 +95,6 @@ export function TritiumEditor({
             </header>
             <div className="relative min-h-0 flex-1">
                 <canvas id="tritium-canvas" className="h-full w-full" />
-                {(error) && (
-                    <div className="absolute left-4 top-4 flex max-w-md items-center gap-2 rounded border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 shadow-sm">
-                        <span>{error}</span>
-                    </div>
-                )}
             </div>
         </div>
     );
