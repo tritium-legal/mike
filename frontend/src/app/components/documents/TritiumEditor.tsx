@@ -16,7 +16,7 @@ type TritiumApi = {
     ) => void;
 };
 
-const TRITIUM_SCRIPT_URL = "http://localhost:8080/static/init.js";
+const TRITIUM_SCRIPT_URL = "https://tritium.legal/static/init.js";
 
 let tritiumModulePromise: Promise<TritiumApi> | null = null;
 
