@@ -5,25 +5,16 @@ import { X } from "lucide-react";
 import type { Document } from "@/app/components/shared/types";
 import { getDocumentFile } from "@/app/lib/mikeApi";
 
-type TritiumApi = {
-    start: ({ folder, files }: { folder?: string; files: File[] }) => void;
-    shutdown: () => void;
-    open_file: (file: File) => Promise<void>;
-    open_folder: (path: string, files: File[]) => Promise<void>;
-    set_exit_handler: (handler: () => void) => void;
-    set_save_handler: (
-        handler: (file: File) => void | Promise<void>,
-    ) => void;
-};
+type TritiumModule = typeof import("@/types/tritium");
 
 const TRITIUM_SCRIPT_URL = "https://tritium.legal/static/init.js";
 
-let tritiumModulePromise: Promise<TritiumApi> | null = null;
+let tritiumModulePromise: Promise<TritiumModule> | null = null;
 
-function loadTritium(): Promise<TritiumApi> {
+function loadTritium(): Promise<TritiumModule> {
     tritiumModulePromise ??= import(
         /* webpackIgnore: true */ TRITIUM_SCRIPT_URL
-    ) as Promise<TritiumApi>;
+    ) as Promise<TritiumModule>;
     return tritiumModulePromise;
 }
 
@@ -41,10 +32,13 @@ export function TritiumEditor({
     const documentsRef = useRef(documents);
     const onCloseRef = useRef(onClose);
     const onSaveRef = useRef(onSave);
-    const tritiumRef = useRef<TritiumApi | null>(null);
-    documentsRef.current = documents;
-    onCloseRef.current = onClose;
-    onSaveRef.current = onSave;
+    const tritiumRef = useRef<TritiumModule | null>(null);
+
+    useEffect(() => {
+        documentsRef.current = documents;
+        onCloseRef.current = onClose;
+        onSaveRef.current = onSave;
+    }, [documents, onClose, onSave]);
 
     useEffect(() => {
         async function openTarget() {
@@ -57,7 +51,7 @@ export function TritiumEditor({
                 })),
             );
             tritium.set_exit_handler(() => onCloseRef.current());
-            tritium.set_save_handler(async (file) => {
+            tritium.set_save_handler(async (file: File) => {
                 const source = documentsRef.current.find(
                     (document) => document.filename === file.name,
                 );
@@ -72,7 +66,11 @@ export function TritiumEditor({
                     { type: response.blob.type },
                 ),
             );
-            tritium.start({ folder: folderName, files });
+            tritium.start({
+                settings: { provider: { Tritium: {} } },
+                folder: folderName,
+                files,
+            });
         }
         void openTarget();
         return () => {};
